@@ -1,0 +1,305 @@
+---
+title: "Analysis for manuscript 'Cross-cultural Examination of University Education and Ego Integrity in Late Adulthood: Implications for Policy and Practice.'"
+author: "Filip Dechterenko"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  word_document: default
+  html_document: default
+bibliography: ../library_egoi.bib
+---
+
+```{r, echo=FALSE, message =F, warning=F}
+library(tidyverse)
+theme_set(theme_bw(18))
+
+plots_dir <- here::here("plots")
+
+load(here::here("data","data_FINAL.RData"))
+
+source(here::here("R","utils.R"))
+
+df <- df %>% filter(!is.na(id), !is.na(rheis15))
+```
+
+```{r life expectancy data, echo=F}
+
+df_life_exp <- readr::read_csv(here::here("data","life-expectancy_4states.csv"), col_types = cols(
+  Entity = col_character(),
+  Code = col_character(),
+  Year = col_integer(),
+  `Life expectancy` = col_double()
+)) %>% transmute(culture=Code,birth_year=Year,life_exp = `Life expectancy`)
+
+df_life_exp <- impute_missing_years(df_life_exp)
+
+df <- df %>% left_join(df_life_exp, by = c("culture", "birth_year")) %>% 
+  mutate(age_ratio = age/life_exp)
+
+```
+
+# Results
+
+```{r cohen alpha for egoi, echo = F, message=F, warning=F}
+# Overall cohen
+ca <- (psych::alpha(df_egoi_items15 %>% select(-culture) %>% as.matrix(), check.keys = F))$total$raw_alpha %>% round(2)
+
+df_egoi2 <- df_egoi_items15 %>%
+  group_by(culture) %>%
+  nest(rheis01:rheis16_r)
+cas <- df_egoi2 %>%
+  group_by(culture) %>%
+  mutate(ca = (psych::alpha(data[[1]] %>% as.matrix(), check.keys = F, warnings = F)$total$raw_alpha) %>% round(2)) %>% 
+  select(-data) 
+cas %>% 
+  knitr::kable(caption = "Ego integrity - 15 items")
+
+```
+
+```{r set ego integrity from 15 items, echo = F}
+df$rheis <- df$rheis15
+```
+
+
+
+## Methods
+
+### Sample
+
+```{r sample description, echo = F, message=F, warning=F,results="hide"}
+df %>% group_by(culture) %>% summarize(n())
+```
+
+Each group of participants was recruited in a specific region to ensure the cultural homogenity. Czech participants were recruited in Prague and Olomouc, German participants were recruited in Osnabrück and Chinese participants in Hong Kong. With respect to the multiethnic population in Cameroon, sampling was restricted to ethnic Grassfield Bantus (Nso) from the Anglophone northwest province in Cameroon @mbaku2005. 
+
+In total, data for present analyses were collected from `r nrow(df)` noninstitutionalized participants. Of these, `r nrow(df %>% filter(culture == "CM"))` were from Cameroon, `r nrow(df %>% filter(culture == "HK"))` from China, `r nrow(df %>% filter(culture == "CZ"))` from the Czech Republic, and `r nrow(df %>% filter(culture == "DE"))` from Germany. However some subjects did not fill all socio-demographic parameters. Descriptive statistics of the sample including number of missing data are shown in Table 1. 
+
+#### Table 1
+
+```{r Table 1, echo = F}
+print_table1() %>% knitr::kable()
+```
+
+```{r, warning=FALSE, message=FALSE, echo = F,results="hide"}
+df1 <- df %>% select(id,age,culture)
+df1 <- df1[complete.cases(df1),]
+
+age_cult <- ez::ezANOVA(data = data.frame(df1), 
+            dv = age, 
+            wid = id, 
+            between = culture, detailed = T, return_aov = T) 
+age_cult_posthoc <- multcomp::glht(age_cult$aov, linfct = multcomp::mcp(culture = "Tukey")) %>% summary() %>% broom::tidy()
+
+tb_univ <- table(df$culture, df$university)
+univ_cult <- chisq.test(tb_univ, simulate.p.value = T) 
+
+univ_cult_posthoc <- pairwise.prop.test(tb_univ) %>% broom::tidy() %>% mutate(p.value = round(p.value, 3))
+
+tb_working <- table(df$culture, df$working)
+working_cult <- chisq.test(tb_working, simulate.p.value = T) 
+
+working_cult_posthoc <- pairwise.prop.test(tb_working) %>% broom::tidy() %>% mutate(p.value = round(p.value, 3))
+ 
+
+```
+
+Cultural samples were balanced with respect to the gender, with exception of the Chinese sample (72% of females). Women and men did not differ in mean age ( `r t.test(age~sex, var.equal = T,df) %>% apa::apa()` ). However, the differences in mean age was significant across samples (`r age_cult %>% apa::apa()`). With exception of non significant differences in age between Czech and Chinese participants (_p_ = `r age_cult_posthoc %>% filter(lhs == "HK - CZ") %>% .$p.value %>% round(3)`), other cultural differences were significant (_p_ < .001). We queried participants about their highest achieved education level. As the education system in each culture differed, we classified the highest education level into participants with and without university education [^1]. The samples differed with respect to the university education (`r apa::apa(univ_cult)`). All differences between cultural samples in proportions of university education were significant with the exceptions of a difference between proportions of Chinese HK and Cameroon samples (`r univ_cult_posthoc %>% filter(group1 == "HK", group2 == "CM") %>% .$p.value`). 
+We also asked the participants, whether they were still working. Overall, the differences between cultural samples were significant (`r working_cult %>% apa::apa()`). Again all pairwise differences in proportions were significant with the exception of differences between Chinese HK and Czech samples (`r working_cult_posthoc %>% filter(group1 == "HK", group2 == "CZ") %>% .$p.value`).
+
+[^1]: We obtained similar results when we replicated the analysis when we divided the non-university education into elementary and high school educations.
+
+### Questionnaries
+
+Ego integrity was assessed with @ryff1983. ego integrity scale (RHEIS). This questionnaire has sixteen 6-point Likert items (e.g. If I had to do it all over again, there are very few things about my life that I would change; I feel generally contented with what I have accomplished in my life). Originally comprising sixteen items, one item (In general, I would say I have few regrets about my past life) was dropped in the present study due to its low internal consistency in at least one culture. Items were rated on a six-point Likert scale (0 = strongly disagree through 5 = strongly agree) with higher scores indicating stronger ego integrity. The fifteen items scale showed good internal consistency (Czech sample: Cronbach's $\alpha$ = `r cas %>% filter(culture == "CZ") %>% pull(ca)`; German sample Cronbach's $\alpha$ = `r cas %>% filter(culture == "DE") %>% pull(ca)`; Cameroon sample: Cronbach's $\alpha$ = `r cas %>% filter(culture == "CM") %>% pull(ca)`; Chinese sample: Cronbach's $\alpha$ = `r cas %>% filter(culture == "HK") %>% pull(ca)`) and acceptable cross-cultural equivalence (see Busch et al., 2018). 
+
+
+## Results
+
+```{r results, echo = F, message=F, warning=F,results="hide", warning=F}
+df1 <- df %>% select(id,rheis,culture)
+df1 <- df1[complete.cases(df1),]
+
+rheis_cult <- ez::ezANOVA(data = data.frame(df1), 
+            dv = rheis, 
+            wid = id, 
+            between = culture, detailed = T, return_aov = T) 
+df1 %>% 
+  group_by(culture) %>%
+  summarize(egoi = mean(rheis), sd = sd(rheis))
+
+cult_posthoc <- multcomp::glht(rheis_cult$aov, linfct = multcomp::mcp(culture = "Tukey")) %>% summary()
+#TukeyHSD(aov(rheis ~ culture, df), conf.level=.95) 
+
+lm_main <- lm(rheis ~ culture*sex + working +age, df)  
+lm_main %>% summary.aov()
+
+
+lm_main <- lm(rheis ~ culture*university*sex + working +age, df)  
+lm_main %>% summary.aov()
+
+aov_main <- aov(rheis ~ culture*university*sex + working +age, df)  
+aov_main %>% car::Anova() 
+emmeans::emmeans(aov_main, ~ university)
+
+df %>% 
+  group_by(culture, sex) %>%
+  summarize(egoi = mean(rheis, na.rm = T), sd = sd(rheis, na.rm = T))
+
+df %>% 
+  summarize(min = min(rheis, na.rm = T), max = max(rheis, na.rm = T)) %>% 
+  knitr::kable()
+
+df %>% 
+  group_by(culture) %>%
+  summarize(egoi = mean(rheis, na.rm = T), sd = sd(rheis, na.rm = T)) %>% 
+  knitr::kable(digits = 2)
+
+
+```
+
+
+```{r linear models core set up, echo=F}
+lm_core <- rbind(lm(scale(rheis15) ~ university, df %>% filter(culture == "DE")) %>% summary() %>% broom::tidy() %>% filter(term == "universityyes"),
+lm(scale(rheis15) ~ university, df %>% filter(culture == "CZ")) %>% summary() %>% broom::tidy() %>% filter(term == "universityyes"),
+lm(scale(rheis15) ~ university, df %>% filter(culture == "HK")) %>% summary() %>% broom::tidy() %>% filter(term == "universityyes"),
+lm(scale(rheis15) ~ university, df %>% filter(culture == "CM")) %>% summary() %>% broom::tidy() %>% filter(term == "universityyes")) %>% 
+  mutate(culture = c("DE", "CZ", "HK", "CM")) %>% 
+  mutate(estimate = round(estimate, 2), p.value = round(p.value, 3))
+```
+
+
+```{r Table 2, echo=F}
+
+
+tab2 <- df %>% 
+  group_by(culture, university) %>%
+  summarize(egoi = mean(rheis, na.rm = T), sd = sd(rheis, na.rm = T)) %>%
+  filter(!is.na(university)) %>% 
+  mutate(val = sprintf("%.2f +- %.2f", egoi, sd)) %>% 
+  select(-egoi,-sd) %>% 
+  spread(university, val) %>% 
+  select(culture, yes, no)
+
+tab2 <- tab2 %>% left_join(lm_core %>% select(culture, estimate, p.value), by = "culture") 
+  
+
+tab2$cohens_d <- round(abs(c(apa::cohens_d(rheis ~ university, df %>% filter(culture == "CM")),
+apa::cohens_d(rheis ~ university, df %>% filter(culture == "CZ")),
+apa::cohens_d(rheis ~ university, df %>% filter(culture == "DE")),
+apa::cohens_d(rheis ~ university, df %>% filter(culture == "HK")))),2)
+
+tab2 %>% knitr::kable(caption = "Mean and SD of ego integrity for persons with and without university education for each culture, including estimates of standardized beta coefficient. Additionally, we also present Cohen’s d as another estimate of effect size.")
+
+
+```
+
+```{r Figure 1,echo=F}
+
+p <- 
+  df %>% 
+  mutate(culture = recode(culture, CM = "Cameroon", CZ = "Czech Republic", DE = "Germany", HK = "China")) %>% 
+  filter(!is.na(sex),!is.na(university)) %>% 
+  ggplot(aes(y=rheis,x=university, col=sex, group = sex, linetype = sex)) +
+  facet_wrap(~culture, ncol=2) +
+  stat_summary(fun.data = "mean_cl_boot",position=position_dodge(0.1)) + 
+  stat_summary(fun.y = "mean", geom = "line") + 
+  ylab("Ego integrity") + 
+  xlab("University education") + 
+  theme(legend.position="none") + theme(aspect.ratio = 1)
+p_leg <- df %>% 
+  mutate(culture = recode(culture, CM = "Cameroon", CZ = "Czech Republic", DE = "Germany", HK = "China")) %>% 
+  filter(!is.na(sex),!is.na(university)) %>% 
+  ggplot(aes(y=rheis,x=university, col=sex, group = sex, linetype = sex)) +
+  facet_wrap(~culture, ncol=2) +
+  stat_summary(fun.data = "mean_cl_boot",position=position_dodge(0.1)) + 
+  stat_summary(fun.y = "mean", geom = "line") + 
+  ylab("Ego integrity") + 
+  xlab("University education") + 
+  theme(aspect.ratio = 1)
+p_leg    
+ggsave(file.path(plots_dir, "Figure1.eps"), p, width = 6, height = 6)
+ggsave(file.path(plots_dir, "Figure1_leg.eps"), p_leg, width = 6, height = 6)
+
+```
+
+```{r Figure 2,echo = F, warning=F, fig.width = 9, fig.cap="Figure 2: Ego integrity in depednance on age. Data were fitted with loess regression."}
+
+p <- df %>% 
+  mutate(culture = recode(culture, CM = "Cameroon", CZ = "Czech Republic", DE = "Germany", HK = "China")) %>% 
+  ggplot(aes(x = age, y = rheis)) + geom_point() + stat_smooth(method = "loess") + facet_wrap(~culture, ncol=2) + ylab("Ego integrity") + xlab("Age") + theme(aspect.ratio = 1)
+p
+ggsave(file.path(plots_dir, "Figure2.eps"), p, width = 6, height = 6)
+
+```
+
+```{r age breakpoint,echo=F}
+lm_CZ_quadr <- df %>% filter(culture == "CZ") %>% lm(rheis15~age+I(age^2),.)
+break_age_CZ <- -lm_CZ_quadr$coefficients[2]/(2*lm_CZ_quadr$coefficients[3])
+
+lm_DE_quadr <- df %>% filter(culture == "DE") %>% lm(rheis15~age+I(age^2),.)
+break_age_DE <- -lm_DE_quadr$coefficients[2]/(2*lm_DE_quadr$coefficients[3])
+
+break_age <- mean(c(break_age_CZ, break_age_DE))
+
+df <- df %>% mutate(age_strat = ifelse(age < break_age, "lower", "higher"))
+
+rbind(lm(scale(rheis15) ~ university*age_strat, df %>% filter(culture == "DE")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*age_strat, df %>% filter(culture == "CZ")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*age_strat, df %>% filter(culture == "HK")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*age_strat, df %>% filter(culture == "CM")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)")) %>% 
+  mutate(culture = rep(c("DE", "CZ", "HK", "CM"), each = 3)) %>% 
+  mutate(estimate = round(estimate, 2), p.value = round(p.value, 3)) %>% 
+  knitr::kable(caption = "scale(egoi) ~ edu*age_strat")
+```
+
+Results suggest differences in the mean levels of ego integrity in between our four samples (`r rheis_cult %>% apa::apa()`). With exception of Czech sample and Cameroon sample (_p_ = `r cult_posthoc %>% broom::tidy() %>% filter(lhs == "CZ - CM") %>% pull(p.value) %>% round(3)`), all pairwise post hoc comparison were significant. 
+
+
+```{r linear models core,echo=F}
+lm_core %>% knitr::kable(caption = "egoi ~ edu")
+```
+
+```{r linear models sex,echo=F}
+rbind(lm(scale(rheis15) ~ university*sex, df %>% filter(culture == "DE")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*sex, df %>% filter(culture == "CZ")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*sex, df %>% filter(culture == "HK")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*sex, df %>% filter(culture == "CM")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)")) %>% 
+  mutate(culture = rep(c("DE", "CZ", "HK", "CM"),each = 3)) %>% 
+  mutate(estimate = round(estimate, 2), p.value = round(p.value, 3)) %>% 
+  knitr::kable(caption = "scale(egoi) ~ edu*sex")
+
+```
+
+```{r linear models working,echo=F}
+rbind(lm(scale(rheis15) ~ university*working, df %>% filter(culture == "DE")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*working, df %>% filter(culture == "CZ")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*working, df %>% filter(culture == "HK")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*working, df %>% filter(culture == "CM")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)")) %>% 
+  mutate(culture = rep(c("DE", "CZ", "HK", "CM"),each = 3)) %>% 
+  mutate(estimate = round(estimate, 2), p.value = round(p.value, 3)) %>% 
+  knitr::kable(caption = "scale(egoi) ~ edu*working")
+
+df %>% group_by(culture,working) %>% summarize(m = mean(rheis15,na.rm = T), sd = sd(rheis15,na.rm = T)) %>% knitr::kable(digits = 2, caption = "Ego integrity")
+```
+
+
+```{r linear models age,echo=F}
+rbind(lm(scale(rheis15) ~ university*scale(age), df %>% filter(culture == "DE")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*scale(age), df %>% filter(culture == "CZ")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*scale(age), df %>% filter(culture == "HK")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*scale(age), df %>% filter(culture == "CM")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)")) %>% 
+  mutate(culture = rep(c("DE", "CZ", "HK", "CM"), each = 3)) %>% 
+  mutate(estimate = round(estimate, 2), p.value = round(p.value, 3)) %>% 
+  knitr::kable(caption = "scale(egoi) ~ edu*scale(age)")
+
+df %>% group_by(culture) %>% summarize(m = mean(age_ratio,na.rm = T), sd = sd(age_ratio,na.rm = T)) %>% knitr::kable(digits = 2, caption = "Age ratio")
+
+rbind(lm(scale(rheis15) ~ university*scale(age_ratio), df %>% filter(culture == "DE")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*scale(age_ratio), df %>% filter(culture == "CZ")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*scale(age_ratio), df %>% filter(culture == "HK")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)"),
+lm(scale(rheis15) ~ university*scale(age_ratio), df %>% filter(culture == "CM")) %>% summary() %>% broom::tidy() %>% filter(term != "(Intercept)")) %>% 
+  mutate(culture = rep(c("DE", "CZ", "HK", "CM"), each = 3)) %>% 
+  mutate(estimate = round(estimate, 2), p.value = round(p.value, 3)) %>% 
+  knitr::kable(caption = "scale(egoi) ~ edu*scale(age_ratio)")
+```
+
+## References
